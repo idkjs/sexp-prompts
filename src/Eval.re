@@ -34,20 +34,20 @@ type result =
 
 let isValid = text =>
   Js.Re.test_(
-
     [%re
       "/(?:-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)|(?:true|false)|null/g"
-    ],text
+    ],
+    text,
   );
 
 let isOperator = text =>
-  Js.Re.test_( [%re "/\\+|-|\\*|\\/|<|>|&&|\\|\\|/g"],text);
+  Js.Re.test_([%re "/\\+|-|\\*|\\/|<|>|&&|\\|\\|/g"], text);
 
-let jseval: (string, string, string) => string = [%raw "return eval(a+op+b)+''"
+let jseval: (string, string, string) => string = [%raw
+  "return eval(a+op+b)+''"
 ];
 
-let isTrue: (string, 'a, 'a) => 'a = [%raw "return eval(x) ? a : b;"
-];
+let isTrue: (string, 'a, 'a) => 'a = [%raw "return eval(x) ? a : b;"];
 
 module Make = (Ctx: Context) : {let eval: (Ctx.t, env, SExp.t) => result;} => {
   module StringMap = Map.Make(String);

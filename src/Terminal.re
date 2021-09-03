@@ -1,4 +1,3 @@
-
 type line = {
   data: SExp.t,
   source: string,
@@ -26,29 +25,29 @@ type action =
   | Define(string, SExp.t)
   | Execute
   | Update(SExp.t);
-module EvelInstance =
-  Eval.Make(
-    {
-      type t = self(state, noRetainedProps, action);
-      let clear = self => ClearBuffer |> self.send;
-      let (<<) = (self, text) => AppendBuffer(text, "output") |> self.send;
-      let (>>) = (Eval.Prompt(self, prompt), callback) =>
-        Prompt(prompt, callback) |> self.send;
-      let (<~) = (self, (name, body)) => Define(name, body) |> self.send;
-      let (%) = (self, name) =>  self.state.mods |> StringMap.find(name);
-      let has = (self, name) =>  self.state.mods |> StringMap.mem(name);
-    },
-  );
+// module EvelInstance =
+//   Eval.Make(
+//     {
+//       type t = self(state, noRetainedProps, action);
+//       let clear = self => ClearBuffer |> self.send;
+//       let (<<) = (self, text) => AppendBuffer(text, "output") |> self.send;
+//       let (>>) = (Eval.Prompt(self, prompt), callback) =>
+//         Prompt(prompt, callback) |> self.send;
+//       let (<~) = (self, (name, body)) => Define(name, body) |> self.send;
+//       let (%) = (self, name) =>  self.state.mods |> StringMap.find(name);
+//       let has = (self, name) =>  self.state.mods |> StringMap.mem(name);
+//     },
+//   );
 module EvalInstance =
   Eval.Make({
-    type t = ReactCompat.self(state, noRetainedProps, action);
-    let clear = self => ClearBuffer |> self.send;
-    let (<<) = (self, text) => AppendBuffer(text, "output") |> self.send;
-    let (>>) = (Eval.Prompt(self, prompt), callback) =>
+    type t = ReactCompat.self(state, action);
+    let clear = (self: t) => ClearBuffer |> self.send;
+    let (<<) = (self: t, text) => AppendBuffer(text, "output") |> self.send;
+    let (>>) = (Eval.Prompt(self: t, prompt), callback) =>
       Prompt(prompt, callback) |> self.send;
-    let (<~) = (self, (name, body)) => Define(name, body) |> self.send;
-    let (%) = (self, name) => self.state.mods |> StringMap.find(name);
-    let has = (self, name) => self.state.mods |> StringMap.mem(name);
+    let (<~) = (self: t, (name, body)) => Define(name, body) |> self.send;
+    let (%) = (self: t, name) => self.state.mods |> StringMap.find(name);
+    let has = (self: t, name) => self.state.mods |> StringMap.mem(name);
   });
 
 module Label = {
@@ -58,7 +57,9 @@ module Label = {
       ...ReactCompat.component,
 
       render: _self =>
-        <div className={clazz |> String.concat("")}> {value |> React.string} </div>,
+        <div className={clazz |> String.concat("")}>
+          {value |> React.string}
+        </div>,
     });
 };
 

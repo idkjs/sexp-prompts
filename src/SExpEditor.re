@@ -1,4 +1,3 @@
-
 type direction =
   | Current
   | Backward
@@ -79,14 +78,11 @@ type updateRequest =
   | DirtyUpdate(SExp.t)
   | MixUpdate(path, SExp.t);
 
-let getValue = event =>
-  event->ReactEvent.Form.target##value;
+let getValue = event => event->ReactEvent.Form.target##value;
 
-let getValueByFocus = event =>
-  event->ReactEvent.Focus.target##innerText;
+let getValueByFocus = event => event->ReactEvent.Focus.target##innerText;
 
-let getValueByKeyboard = event =>
-  event->ReactEvent.Keyboard.target##innerText;
+let getValueByKeyboard = event => event->ReactEvent.Keyboard.target##innerText;
 
 let doFocus: (bool, Js.nullable(Dom.element)) => unit = [%bs.raw
   {|
@@ -165,7 +161,10 @@ let make = (~data: SExp.t, ~onUpdate, ()) =>
         | CleanUpdate(path) => ReactCompat.Update({select: path})
         | DirtyUpdate(expr) => ReactCompat.SideEffects(_ => onUpdate(expr))
         | MixUpdate(path, expr) =>
-          ReactCompat.UpdateWithSideEffects({select: path}, _ => onUpdate(expr));
+          ReactCompat.UpdateWithSideEffects(
+            {select: path},
+            _ => onUpdate(expr),
+          );
       switch (action) {
       | Select(path) => handleUpdate(CleanUpdate(path))
       | Append(path, direction) =>
@@ -437,6 +436,13 @@ let make = (~data: SExp.t, ~onUpdate, ()) =>
       };
     },
     render: self => {
+      let rootRef: React.ref(Js.Nullable.t(Dom.element)) =
+        React.useRef(Js.Nullable.null);
+      let ref =
+        switch (rootRef.current->Js.Nullable.toOption) {
+        | Some(ref) => doFocus(true, Js.Nullable.return(ref))
+        | None => ()
+        };
       let path = self.state.select |> simplifyPath(data);
       let handleFocus = (path, event) => {
         ReactEvent.Focus.stopPropagation(event);
@@ -549,9 +555,10 @@ let make = (~data: SExp.t, ~onUpdate, ()) =>
           | _ => handleKeyup(xpath, event)
           };
         };
+
         <span
           className="list"
-          ref={doFocus(path == xpath)}
+          ref={ReactDOM.Ref.domRef(rootRef)}
           onKeyDown={handleKeydown(xpath)}
           onKeyUp=handleListKeyup
           onFocus={handleFocus(xpath)}>
@@ -580,7 +587,8 @@ let make = (~data: SExp.t, ~onUpdate, ()) =>
           ]) =>
           <span
             className=special
-            ref={doFocus(path == xpath)}
+            ref={ReactDOM.Ref.domRef(rootRef)}
+            // ref={doFocus(path == xpath)}
             onKeyDown={handleKeydown(xpath)}
             onKeyUp={handleKeyup(xpath)}
             onFocus={handleFocus(xpath)}>
@@ -589,7 +597,8 @@ let make = (~data: SExp.t, ~onUpdate, ()) =>
         | SExp.List([]) =>
           <span
             className="nil"
-            ref={doFocus(path == xpath)}
+            ref={ReactDOM.Ref.domRef(rootRef)}
+            // ref={doFocus(path == xpath)}
             onKeyDown={handleKeydown(xpath)}
             onKeyUp={handleKeyup(xpath)}
             onFocus={handleFocus(xpath)}
