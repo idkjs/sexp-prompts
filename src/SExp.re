@@ -117,12 +117,11 @@ let parseList = input => {
 };
 
 let parse = input => {
-  let rec valid = (
+  let rec valid =
     fun
     | [] => []
     | [Bracket(true), ...next] => next
-    | [_, ...tl] => valid(tl)
-  );
+    | [_, ...tl] => valid(tl);
   let (list, _) = input |> String.trim |> tokenizer |> valid |> parseList;
   List(list);
 };

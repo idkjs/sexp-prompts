@@ -17,14 +17,18 @@
   "license": "MIT",
   "dependencies": {
     "bitbar-webpack-progress-plugin": "^1.0.0",
-    "react": "^16.2.0",
-    "react-dom": "^16.3.3",
-    "reason-react": "^0.4.0",
-    "webpack-serve": "^0.3.2"
+    "bloodyowl-upgrade-reason-react": "^1.0.0",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "reason-react": "^0.9.1",
+    "reason-react-compat": "^2.0.0",
+    "reason-react-update": "^2.0.0",
+    "rescript-react-update": "^4.0.0",
+    "webpack-serve": "^4.0.0"
   },
   "devDependencies": {
-    "bs-platform": "^3.0.0",
-    "webpack": "^4.0.1",
-    "webpack-cli": "^2.0.10"
+    "bs-platform": "^9.0.2",
+    "webpack": "^5.52.0",
+    "webpack-cli": "^4.8.0"
   }
 }
