@@ -17,14 +17,14 @@
   "license": "MIT",
   "dependencies": {
     "bitbar-webpack-progress-plugin": "^1.0.0",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
-    "reason-react": "^0.9.1",
-    "webpack-serve": "^4.0.0"
+    "react": "^16.2.0",
+    "react-dom": "^16.3.3",
+    "reason-react": "^0.4.0",
+    "webpack-serve": "^0.3.2"
   },
   "devDependencies": {
-    "bs-platform": "^9.0.2",
-    "webpack": "^5.51.2",
-    "webpack-cli": "^4.8.0"
+    "bs-platform": "^3.0.0",
+    "webpack": "^4.0.1",
+    "webpack-cli": "^2.0.10"
   }
 }

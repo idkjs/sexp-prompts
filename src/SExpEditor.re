@@ -1,4 +1,4 @@
-// open ReasonReact;
+open ReasonReact;
 
 type direction =
   | Current
@@ -59,7 +59,9 @@ let simplifyPath: (SExp.t, path) => list(int) =
         proc([], (path |> List.rev, context));
       };
 
-type state = {select: path};
+type state = {
+  select: path,
+};
 
 exception Overflow;
 
@@ -80,11 +82,19 @@ type updateRequest =
   | DirtyUpdate(SExp.t)
   | MixUpdate(path, SExp.t);
 
-let getValue = event => event->ReactEvent.Form.target##value;
+let component = reducerComponent("SExpEditor");
 
-let getValueByFocus = event => event->ReactEvent.Focus.target##innerText;
+let getValue = event => ReactDOMRe.domElementToObj(
+                          ReactEventRe.Form.target(event),
+                        )##value;
 
-let getValueByKeyboard = event => event->ReactEvent.Keyboard.target##innerText;
+let getValueByFocus = event => ReactDOMRe.domElementToObj(
+                                 ReactEventRe.Focus.target(event),
+                               )##innerText;
+
+let getValueByKeyboard = event => ReactDOMRe.domElementToObj(
+                                    ReactEventRe.Keyboard.target(event),
+                                  )##innerText;
 
 let doFocus: (bool, Js.nullable(Dom.element)) => unit = [%bs.raw
   {|
@@ -98,7 +108,7 @@ let doFocus: (bool, Js.nullable(Dom.element)) => unit = [%bs.raw
   |}
 ];
 
-let selectAll: ReactEvent.Focus.t => unit = [%bs.raw
+let selectAll: ReactEventRe.Focus.t => unit = [%bs.raw
   {|
     function (event) {
       const self = event.target;
@@ -150,19 +160,21 @@ let actionDump =
   | AsNil(path) => "AsNil " ++ pathToString(path)
   | Modify(path, text) => "Modify " ++ pathToString(path) ++ ": " ++ text;
 
-[@react.component]
-let make = (~data: SExp.t, ~onUpdate) => {
-  let initialState = {select: RootPath};
-  let reducer = (_state, action) => {
+let make = (~data: SExp.t, ~onUpdate, _children) => {
+  ...component,
+  initialState: () => {select: RootPath},
+  reducer: (action: action, _state: state) => {
     action |> actionDump |> Js.log;
     let handleUpdate =
       fun
-      | CleanUpdate(path) => {select: path}
-      | DirtyUpdate(expr) => onUpdate(expr)
-      | MixUpdate(path, expr) => {
-          onUpdate(expr)->ignore;
-          {select: path};
-        };
+      | CleanUpdate(path) => Update({select: path})
+      | DirtyUpdate(expr) =>
+        SideEffects(((_) => onUpdate(expr)))
+      | MixUpdate(path, expr) =>
+        UpdateWithSideEffects(
+          {select: path},
+          ((_) => onUpdate(expr)),
+        );
     switch (action) {
     | Select(path) => handleUpdate(CleanUpdate(path))
     | Append(path, direction) =>
@@ -279,14 +291,10 @@ let make = (~data: SExp.t, ~onUpdate) => {
         | ([], SExp.Atom(_)) => (SExp.List([]) |> fn, RootPath)
         | ([pos], SExp.List(list)) when List.length(list) > pos => (
             SExp.List(removeFromList(pos, list)) |> fn,
-            dir == Backward
-              ? RelativePath(spath |> List.rev, Backward)
-              : RelativePath(spath |> List.rev, Current),
+            dir == Backward ?
+              RelativePath(spath |> List.rev, Backward) : RelativePath(spath |> List.rev, Current),
           )
-        | ([_], SExp.List(_) as list) => (
-            list |> fn,
-            SimplePath(spath |> List.rev),
-          )
+        | ([_], SExp.List(_) as list) => (list |> fn, SimplePath(spath |> List.rev))
         | ([pos, ...next], SExp.List(list)) =>
           access(
             newitem =>
@@ -432,160 +440,165 @@ let make = (~data: SExp.t, ~onUpdate) => {
       let expr = access(x => x, (spath, data));
       handleUpdate(DirtyUpdate(expr));
     };
-  };
-  let (state, dispatch) = React.useReducer(reducer, initialState);
-  let path = state.select |> simplifyPath(data);
-  let handleFocus = (path, event) => {
-    ReactEvent.Focus.stopPropagation(event);
-    Select(SimplePath(path)) |> dispatch;
-  };
-  let handleKeydown = (path, event) => {
-    ReactEvent.Keyboard.stopPropagation(event);
-    let proc = _ => ReactEvent.Keyboard.preventDefault(event);
-    switch (
-      ReactEvent.Keyboard.keyCode(event),
-      ReactEvent.Keyboard.ctrlKey(event),
-    ) {
-    | (32, true) => Append(SimplePath(path), Backward) |> dispatch |> proc
-    | (32, false) => Append(SimplePath(path), Forward) |> dispatch |> proc
-    | (13, _) => Package(SimplePath(path)) |> dispatch |> proc
-    | _ => ()
+  },
+  render: self => {
+    let path = self.state.select |> simplifyPath(data);
+    let handleFocus = (path, event) => {
+      ReactEventRe.Focus.stopPropagation(event);
+      Select(SimplePath(path)) |> self.send;
     };
-  };
-
-  let handleKeyup = (path, event) => {
-    ReactEvent.Keyboard.stopPropagation(event);
-    let proc = _ => ReactEvent.Keyboard.preventDefault(event);
-    switch (ReactEvent.Keyboard.keyCode(event)) {
-    | 8 => Delete(SimplePath(path), Backward) |> dispatch |> proc
-    | 46 => Delete(SimplePath(path), Forward) |> dispatch |> proc
-    | 38 => Select(RelativePath(path, Backward)) |> dispatch |> proc
-    | 40 => Select(RelativePath(path, Forward)) |> dispatch |> proc
-    | _ => ()
-    };
-  };
-  let renderAtom = (xpath, value) => {
-    let handleInputKeyup = event => {
-      ReactEvent.Keyboard.stopPropagation(event);
-      let proc = _ => ReactEvent.Keyboard.preventDefault(event);
+    let handleKeydown = (path, event) => {
+      ReactEventRe.Keyboard.stopPropagation(event);
+      let proc = (_) => ReactEventRe.Keyboard.preventDefault(event);
       switch (
-        event |> getValueByKeyboard,
-        ReactEvent.Keyboard.keyCode(event),
+        ReactEventRe.Keyboard.keyCode(event),
+        ReactEventRe.Keyboard.ctrlKey(event),
       ) {
-      | (_, 38) => Select(RelativePath(path, Backward)) |> dispatch |> proc
-      | (_, 40) => Select(RelativePath(path, Forward)) |> dispatch |> proc
-      | ("", _) => handleKeyup(xpath, event)
+      | (32, true) =>
+        Append(SimplePath(path), Backward) |> self.send |> proc
+      | (32, false) =>
+        Append(SimplePath(path), Forward) |> self.send |> proc
+      | (13, _) => Package(SimplePath(path)) |> self.send |> proc
       | _ => ()
       };
     };
-    let handleInputKeydown = event => {
-      ReactEvent.Keyboard.stopPropagation(event);
-      let proc = _ => ReactEvent.Keyboard.preventDefault(event);
-      switch (
-        event |> getValueByKeyboard,
-        ReactEvent.Keyboard.keyCode(event),
-        ReactEvent.Keyboard.key(event),
-      ) {
-      | (_, _, "(")
-      | (_, _, ")")
-      | (_, 38, _)
-      | (_, 40, _) => ReactEvent.Keyboard.preventDefault(event)
-      | ("", 32, _) =>
-        AppendWithNil(
-          SimplePath(path),
-          ReactEvent.Keyboard.ctrlKey(event) ? Backward : Forward,
-        )
-        |> dispatch
-        |> proc
-      | (_, 32, _) =>
-        Append(
-          SimplePath(path),
-          ReactEvent.Keyboard.ctrlKey(event) ? Backward : Forward,
-        )
-        |> dispatch
-        |> proc
-      | (_, 13, _) => Package(SimplePath(path)) |> dispatch |> proc
+    let handleKeyup = (path, event) => {
+      ReactEventRe.Keyboard.stopPropagation(event);
+      let proc = (_) => ReactEventRe.Keyboard.preventDefault(event);
+      switch (ReactEventRe.Keyboard.keyCode(event)) {
+      | 8 => Delete(SimplePath(path), Backward) |> self.send |> proc
+      | 46 => Delete(SimplePath(path), Forward) |> self.send |> proc
+      | 38 => Select(RelativePath(path, Backward)) |> self.send |> proc
+      | 40 => Select(RelativePath(path, Forward)) |> self.send |> proc
       | _ => ()
       };
     };
-    let handleBlur = event =>
-      switch (event |> getValueByFocus) {
-      | "" when path == xpath =>
-        Delete(SimplePath(path), Backward) |> dispatch
-      | _ => ()
+    let renderAtom = (xpath, value) => {
+      let handleInputKeyup = event => {
+        ReactEventRe.Keyboard.stopPropagation(event);
+        let proc = (_) => ReactEventRe.Keyboard.preventDefault(event);
+        switch (
+          event |> getValueByKeyboard,
+          ReactEventRe.Keyboard.keyCode(event),
+        ) {
+        | (_, 38) =>
+          Select(RelativePath(path, Backward)) |> self.send |> proc
+        | (_, 40) =>
+          Select(RelativePath(path, Forward)) |> self.send |> proc
+        | ("", _) => handleKeyup(xpath, event)
+        | _ => ()
+        };
       };
-    let handleChange = event =>
-      Modify(SimplePath(xpath), event |> getValue) |> dispatch;
-    let handleInputFocus = event => {
-      selectAll(event);
-      handleFocus(xpath, event);
-    };
-    <ContentEditable
-      className="atom editor"
-      html=value
-      autofocus={path == xpath}
-      onKeyUp=handleInputKeyup
-      onBlur=handleBlur
-      onChange=handleChange
-      onKeyDown=handleInputKeydown
-      onFocus=handleInputFocus
-    />;
-  };
-  let rec renderList = (xpath, list) => {
-    let handleListKeyup = event => {
-      ReactEvent.Keyboard.stopPropagation(event);
-      let proc = _ => ReactEvent.Keyboard.preventDefault(event);
-      switch (
-        ReactEvent.Keyboard.shiftKey(event),
-        ReactEvent.Keyboard.keyCode(event),
-      ) {
-      | (true, 8) => Unpackage(SimplePath(xpath)) |> dispatch |> proc
-      | _ => handleKeyup(xpath, event)
+      let handleInputKeydown = event => {
+        ReactEventRe.Keyboard.stopPropagation(event);
+        let proc = (_) => ReactEventRe.Keyboard.preventDefault(event);
+        switch (
+          event |> getValueByKeyboard,
+          ReactEventRe.Keyboard.keyCode(event),
+          ReactEventRe.Keyboard.key(event),
+        ) {
+        | (_, _, "(")
+        | (_, _, ")")
+        | (_, 38, _)
+        | (_, 40, _) => ReactEventRe.Keyboard.preventDefault(event)
+        | ("", 32, _) =>
+          AppendWithNil(
+            SimplePath(path),
+            ReactEventRe.Keyboard.ctrlKey(event) ? Backward : Forward,
+          )
+          |> self.send
+          |> proc
+        | (_, 32, _) =>
+          Append(
+            SimplePath(path),
+            ReactEventRe.Keyboard.ctrlKey(event) ? Backward : Forward,
+          )
+          |> self.send
+          |> proc
+        | (_, 13, _) => Package(SimplePath(path)) |> self.send |> proc
+        | _ => ()
+        };
       };
+      let handleBlur = event =>
+        switch (event |> getValueByFocus) {
+        | "" when path == xpath =>
+          Delete(SimplePath(path), Backward) |> self.send
+        | _ => ()
+        };
+      let handleChange = event =>
+        Modify(SimplePath(xpath), event |> getValue) |> self.send;
+      let handleInputFocus = event => {
+        selectAll(event);
+        handleFocus(xpath, event);
+      };
+      <ContentEditable
+        className="atom editor"
+        html=value
+        autofocus=(path == xpath)
+        onKeyUp=handleInputKeyup
+        onBlur=handleBlur
+        onChange=handleChange
+        onKeyDown=handleInputKeydown
+        onFocus=handleInputFocus
+      />;
     };
-    <span
-      className="list"
-      ref={doFocus(ReactDOMRe.Ref.domRef(path == xpath))}
-      // ref={doFocus(path == xpath)}
-      onKeyDown={handleKeydown(xpath)}
-      onKeyUp=handleListKeyup
-      onFocus={handleFocus(xpath)}>
-      {list
-       |> List.mapi((i, item) => {
-            let clazz =
-              switch (item) {
-              | SExp.List([]) => "item item-nil"
-              | _ => "item"
-              };
-            <div key={i |> string_of_int} className=clazz>
-              {item |> renderSExp([i, ...xpath])}
-            </div>;
-          })
-       |> Array.of_list
-       |> React.array}
-    </span>;
-  }
-  and renderSExp = xpath =>
-    fun
-    | SExp.Atom(value) => value |> renderAtom(xpath)
-    | SExp.List([SExp.Atom("quote" as special), content])
-    | SExp.List([SExp.Atom("string" as special), SExp.List(_) as content]) =>
+    let rec renderList = (xpath, list) => {
+      let handleListKeyup = event => {
+        ReactEventRe.Keyboard.stopPropagation(event);
+        let proc = (_) => ReactEventRe.Keyboard.preventDefault(event);
+        switch (
+          ReactEventRe.Keyboard.shiftKey(event),
+          ReactEventRe.Keyboard.keyCode(event),
+        ) {
+        | (true, 8) => Unpackage(SimplePath(xpath)) |> self.send |> proc
+        | _ => handleKeyup(xpath, event)
+        };
+      };
       <span
-        className=special
-        ref={doFocus(path == xpath)}
-        onKeyDown={handleKeydown(xpath)}
-        onKeyUp={handleKeyup(xpath)}
-        onFocus={handleFocus(xpath)}>
-        {content |> renderSExp([1, ...xpath])}
-      </span>
-    | SExp.List([]) =>
-      <span
-        className="nil"
-        ref={doFocus(path == xpath)}
-        onKeyDown={handleKeydown(xpath)}
-        onKeyUp={handleKeyup(xpath)}
-        onFocus={handleFocus(xpath)}
-      />
-    | SExp.List(list) => list |> renderList(xpath);
-  renderSExp([], data);
+        className="list"
+        ref=(doFocus(path == xpath))
+        onKeyDown=(handleKeydown(xpath))
+        onKeyUp=handleListKeyup
+        onFocus=(handleFocus(xpath))>
+        (
+          list
+          |> List.mapi((i, item) => {
+               let clazz =
+                 switch (item) {
+                 | SExp.List([]) => "item item-nil"
+                 | _ => "item"
+                 };
+               <div key=(i |> string_of_int) className=clazz>
+                 (item |> renderSExp([i, ...xpath]))
+               </div>;
+             })
+          |> Array.of_list
+          |> array
+        )
+      </span>;
+    }
+    and renderSExp = xpath =>
+      fun
+      | SExp.Atom(value) => value |> renderAtom(xpath)
+      | SExp.List([SExp.Atom("quote" as special), content])
+      | SExp.List([SExp.Atom("string" as special), SExp.List(_) as content]) =>
+        <span
+          className=special
+          ref=(doFocus(path == xpath))
+          onKeyDown=(handleKeydown(xpath))
+          onKeyUp=(handleKeyup(xpath))
+          onFocus=(handleFocus(xpath))>
+          (content |> renderSExp([1, ...xpath]))
+        </span>
+      | SExp.List([]) =>
+        <span
+          className="nil"
+          ref=(doFocus(path == xpath))
+          onKeyDown=(handleKeydown(xpath))
+          onKeyUp=(handleKeyup(xpath))
+          onFocus=(handleFocus(xpath))
+        />
+      | SExp.List(list) => list |> renderList(xpath);
+    renderSExp([], data);
+  },
 };

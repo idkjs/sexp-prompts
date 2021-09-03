@@ -1,4 +1,4 @@
-// open ReasonReact;
+open ReasonReact;
 
 type line = {
   data: SExp.t,
@@ -28,132 +28,117 @@ type action =
   | Execute
   | Update(SExp.t);
 
-// let component = reducerComponent("Terminal");
-// [@react.component]
+let component = reducerComponent("Terminal");
+
 module EvelInstance =
-  Eval.Make({
-    type t = (state, action);
-    let clear = dispatch => ClearBuffer |> dispatch;
-    let (<<) = (dispatch, text) => AppendBuffer(text, "output") |> dispatch;
-    let (>>) = (Eval.Prompt(dispatch, prompt), callback) =>
-      Prompt(prompt, callback) |> dispatch;
-    let (<~) = (dispatch, (name, body)) => Define(name, body) |> dispatch;
-    let (%) = (dispatch, name) => state.mods |> StringMap.find(name);
-    let has = (dispatch, name) => state.mods |> StringMap.mem(name);
-  });
+  Eval.Make(
+    {
+      type t = self(state, noRetainedProps, action);
+      let clear = self => ClearBuffer |> self.send;
+      let (<<) = (self, text) => AppendBuffer(text, "output") |> self.send;
+      let (>>) = (Eval.Prompt(self, prompt), callback) =>
+        Prompt(prompt, callback) |> self.send;
+      let (<~) = (self, (name, body)) => Define(name, body) |> self.send;
+      let (%) = (self, name) =>  self.state.mods |> StringMap.find(name);
+      let has = (self, name) =>  self.state.mods |> StringMap.mem(name);
+    },
+  );
 
 module Label = {
-  [@react.component]
-  let make = (~value, ~clazz) => {
-    <div className={clazz |> String.concat("")}>
-      {value |> React.string}
-    </div>;
+  let component = statelessComponent("Label");
+  let make = (~value, ~clazz, _children) => {
+    ...component,
+    render: _self =>
+      <div className=(clazz |> String.concat(""))> (value |> string) </div>,
   };
 };
-  let execute = (state,dispatch) =>{
-    switch (state.prompt) {
-    | None =>
-      switch (EvelInstance.eval(state, [], state.minibuffer)) {
-      | Eval.Result(exp) => AppendBuffer(exp, "result") |> dispatch
-      | Eval.Error(exp) => AppendBuffer(exp, "error") |> dispatch
-      }
-    | Some({handler}) => handler(state.minibuffer)
-    };
-    dispatch(Execute);};
-let reducer = (state, action) =>
-  switch (action) {
-  | ClearBuffer => {...state, buffer: []}
-  | AppendBuffer(data, source) => {
-      ...state,
-      buffer: [{data, source, time: Js.Date.make()}, ...state.buffer],
-    }
-  | Update(minibuffer) => {...state, minibuffer}
-  | Execute =>{
+
+let make = _children => {
+  ...component,
+  initialState: () => {
+    buffer: [],
+    mods: StringMap.empty,
+    minibuffer: SExp.empty,
+    prompt: None,
+  },
+  reducer: (action, state) =>
+    switch (action) {
+    | ClearBuffer => Update({...state, buffer: []})
+    | AppendBuffer(data, source) =>
+      Update({
         ...state,
         buffer: [
-          {data: state.minibuffer, source: "input", time: Js.Date.make()},
+          {data, source, time: Js.Date.make()},
           ...state.buffer,
         ],
-        minibuffer: SExp.empty,
-        prompt: None,
-      }
-    // UpdateWithSideEffects(
-    //   {
-    //     ...state,
-    //     buffer: [
-    //       {data: state.minibuffer, source: "input", time: Js.Date.make()},
-    //       ...state.buffer,
-    //     ],
-    //     minibuffer: SExp.empty,
-    //     prompt: None,
-    //   },
-    //   self =>
-    //     switch (state.prompt) {
-    //     | None =>
-    //       switch (EvelInstance.eval(self, [], state.minibuffer)) {
-    //       | Eval.Result(exp) => AppendBuffer(exp, "result") |> self.send
-    //       | Eval.Error(exp) => AppendBuffer(exp, "error") |> self.send
-    //       }
-    //     | Some({handler}) => handler(state.minibuffer)
-    //     },
-    // )
-  | Prompt(indicator, handler) => {
-      ...state,
-      prompt: Some({indicator, handler}),
-    }
-  | Define(name, body) => {
-      ...state,
-      mods: state.mods |> StringMap.add(name, body),
-    }
-  };
-let initialState = {
-  buffer: [],
-  mods: StringMap.empty,
-  minibuffer: SExp.empty,
-  prompt: None,
-};
-[@react.component]
-let make = () => {
-  let (state, dispatch) = React.useReducer(reducer, initialState);
-  let execute = () => execute(state, dispatch)
-  // let execute = () =>{
-  //   switch (state.prompt) {
-  //   | None =>
-  //     switch (EvelInstance.eval(state, [], state.minibuffer)) {
-  //     | Eval.Result(exp) => AppendBuffer(exp, "result") |> dispatch
-  //     | Eval.Error(exp) => AppendBuffer(exp, "error") |> dispatch
-  //     }
-  //   | Some({handler}) => handler(state.minibuffer)
-  //   };
-  //   dispatch(Execute);};
-  let {buffer, minibuffer, prompt} = state;
-  let length = buffer |> List.length;
-  <div className="terminal">
-    <div className="buffer">
-      {buffer
-       |> List.mapi((i, {data: datax, source, time}) =>
-            <div
-              className={"log " ++ source} key={length - i |> string_of_int}>
-              <Label clazz=["time"] value={time |> Js.Date.toLocaleString} />
-              <Label clazz=["source"] value={datax |> SExp.toString} />
-              <SExpViewer data=datax />
-            </div>
-          )
-       |> Array.of_list
-       |> React.array}
-    </div>
-    <div className="mini-buffer">
-      {switch (prompt) {
-       | Some({indicator}) => <Label clazz=["indicator"] value=indicator />
-       | _ => React.null
-       }}
-      <SExpEditor
-        data=minibuffer
-        onUpdate={data => Update(data) |> dispatch}
-      />
-      <button onClick={_ => execute()}>
-        {"eval" |> React.string}
-      </button>
-    </div>
-  </div>;
+      })
+    | Update(minibuffer) => Update({...state, minibuffer})
+    | Execute =>
+      UpdateWithSideEffects(
+        {
+          ...state,
+          buffer: [
+            {
+              data: state.minibuffer,
+              source: "input",
+              time: Js.Date.make(),
+            },
+            ...state.buffer,
+          ],
+          minibuffer: SExp.empty,
+          prompt: None,
+        },
+        (
+          self =>
+            switch (state.prompt) {
+            | None =>
+              switch (EvelInstance.eval(self, [], state.minibuffer)) {
+              | Eval.Result(exp) => AppendBuffer(exp, "result") |> self.send
+              | Eval.Error(exp) => AppendBuffer(exp, "error") |> self.send
+              }
+            | Some({handler}) => handler(state.minibuffer)
+            }
+        ),
+      )
+    | Prompt(indicator, handler) =>
+      Update({...state, prompt: Some({indicator, handler})})
+    | Define(name, body) =>
+      Update({...state, mods: state.mods |> StringMap.add(name, body)})
+    },
+  render: self => {
+    let {buffer, minibuffer, prompt} = self.state;
+    let length = buffer |> List.length;
+    <div className="terminal">
+      <div className="buffer">
+        (
+          buffer
+          |> List.mapi((i, {data: datax, source, time}) =>
+               <div className=("log " ++ source) key=(length - i |> string_of_int)>
+                 <Label clazz=["time"] value=(time |> Js.Date.toLocaleString) />
+                 <Label clazz=["source"] value=(datax |> SExp.toString) />
+                 <SExpViewer data=datax />
+               </div>
+             )
+          |> Array.of_list
+          |> array
+        )
+      </div>
+      <div className="mini-buffer">
+        (
+          switch (prompt) {
+          | Some({indicator}) =>
+            <Label clazz=["indicator"] value=indicator />
+          | _ => null
+          }
+        )
+        <SExpEditor
+          data=minibuffer
+          onUpdate=(data => Update(data) |> self.send)
+        />
+        <button onClick=((_) => Execute |> self.send)>
+          ("eval" |> string)
+        </button>
+      </div>
+    </div>;
+  },
 };

@@ -1,25 +1,24 @@
 let expr =
-  SExp.parse(
-    "(module test (define (quote main) (println (string (Hello, () world)))))",
-  );
+  SExp.parse("(module test (define (quote main) (println (string (Hello, () world)))))");
 
 module SyncView = {
   open ReasonReact;
   type state = {exp: SExp.t};
   type action =
     | Update(SExp.t);
-  let reducer = (_state, action) =>
-    switch (action) {
-    | Update(exp) => {exp: exp}
-    };
-  [@react.component]
-  let make = (~data: SExp.t) => {
-    let (state, dispatch) = React.useReducer(reducer, {exp: data});
-
-    <div className="SyncView">
-      <SExpEditor data={state.exp} onUpdate={x => Update(x) |> dispatch} />
-      <pre> {state.exp |> SExp.toString |> React.string} </pre>
-    </div>;
+  let component = reducerComponent("SyncView");
+  let make = (~data: SExp.t, _children) => {
+    ...component,
+    initialState: () => {exp: data},
+    reducer: (Update(exp), _state) => Update({exp: exp}),
+    render: self =>
+      <div className="SyncView">
+        <SExpEditor
+          data=self.state.exp
+          onUpdate=(x => Update(x) |> self.send)
+        />
+        <pre> (self.state.exp |> SExp.toString |> string) </pre>
+      </div>,
   };
 };
 
